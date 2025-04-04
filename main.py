@@ -5,7 +5,7 @@ from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Embedding, LSTM, Dense
-
+from tensorflow.keras.callbacks import EarlyStopping
 import random
 
 
@@ -15,7 +15,7 @@ def load_data(filepath):
     return text.lower()
 
 def preprocess_text(text, max_vocab_size=5000, seq_length=10):
-    tokenizer = Tokenizer(num_words=max_vocab_size)
+    tokenizer = Tokenizer(num_words=max_vocab_size, oov_token="<OOV>")
     tokenizer.fit_on_texts([text])
     total_words = min(len(tokenizer.word_index) + 1, max_vocab_size)
     
@@ -43,16 +43,13 @@ def build_model(total_words, seq_length):
     model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
     return model
 
+# Generate text
 def generate_text(model, tokenizer, seed_text, max_words, seq_length):
     for _ in range(max_words):
         token_list = tokenizer.texts_to_sequences([seed_text])[0]
         token_list = pad_sequences([token_list], maxlen=seq_length-1, padding='pre')
-        predicted = np.argmax(model.predict(token_list), axis=-1)
-        output_word = ""
-        for word, index in tokenizer.word_index.items():
-            if index == predicted:
-                output_word = word
-                break
+        predicted = np.argmax(model.predict(token_list), axis=-1)[0]
+        output_word = tokenizer.index_word.get(predicted, "")
         seed_text += " " + output_word
     return seed_text
 
@@ -62,12 +59,12 @@ if __name__ == "__main__":
     X, y, tokenizer, seq_length, total_words = preprocess_text(text_data)
     
     model = build_model(total_words, seq_length)
-    model.fit(X, y, epochs=20, verbose=1)
+    early_stop = EarlyStopping(monitor='loss', patience=3, restore_best_weights=True)
+    model.fit(X, y, epochs=20, verbose=1, callbacks=[early_stop])
     
     seed_text = "to be or not to be"
     generated_text = generate_text(model, tokenizer, seed_text, 50, seq_length)
     print("Generated Text:", generated_text)
     
     os.makedirs("models", exist_ok=True)
-    model.save("models/lstm_text_gen_model.keras")
-
+    model.save("models/lstm_text_gen_model.h5")
